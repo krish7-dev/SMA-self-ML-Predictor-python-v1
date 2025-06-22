@@ -1,0 +1,22 @@
+{
+    "logistic": {
+        "prediction": 1,
+        "confidence": 0.6599
+    },
+    "random_forest": {
+        "prediction": 0,
+        "confidence": 0.59
+    },
+    "xgboost": {
+        "prediction": 0,
+        "confidence": 0.5244
+    },
+    "lightgbm": {
+        "prediction": 1,
+        "confidence": 0.5451
+    },
+    "catboost": {
+        "prediction": 1,
+        "confidence": 0.5161
+    }
+}
