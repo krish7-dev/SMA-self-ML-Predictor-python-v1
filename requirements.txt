@@ -18,3 +18,4 @@ catboost==1.2.5
 # Utilities
 joblib==1.4.2
 pydantic==2.7.1
+websockets
