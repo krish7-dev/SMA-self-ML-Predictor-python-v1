@@ -2,6 +2,8 @@ from fastapi import FastAPI, Body, WebSocket
 from datetime import date
 from pydantic import BaseModel
 
+from utils.one_year_data import one_year_data
+
 app = FastAPI()
 
 MODEL = None
@@ -10,6 +12,7 @@ METRICS = {
     "feature_importance": None,
     "last_trained": None
 }
+
 
 class FeatureInput(BaseModel):
     model_type: str
@@ -24,7 +27,16 @@ def root():
 #Fetches and stores historical candle data for a symbol between two dates.
 @app.get("/data")
 async def get_data(symbol: str, from_date: date, to_date: date):
-    pass
+    print(symbol,from_date,to_date)
+    file_path, candles = await one_year_data(symbol, from_date, to_date)
+    print(file_path,candles[:5])
+    if file_path and candles:
+        return {
+            "message": f"Data collected and saved to {file_path}",
+            "preview": candles[:5]
+        }
+    else:
+        return {"error": "No data collected or saving failed."}
 
 #Makes prediction using (REST) a specified model and feature set.
 @app.post("/predict")
@@ -39,7 +51,9 @@ async def websocket_predict(websocket: WebSocket):
 #Predicts using all five model types and writes results to a local JSON + opens HTML.
 @app.post("/predict_all_models")
 def predict_all_models_endpoint(data: FeatureInput = Body(...)):
-    pass
+    models = ["logistic", "random_forest", "xgboost", "lightgbm", "catboost"]
+    results = {}
+
 
 #Converts raw candle data to engineered features and saves as training dataset.
 @app.get("/create_train_data")
