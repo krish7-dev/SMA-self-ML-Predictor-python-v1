@@ -1,8 +1,11 @@
 from fastapi import FastAPI, Body, WebSocket
 from datetime import date
 from pydantic import BaseModel
+import json, webbrowser
 
-from utils.one_year_data import one_year_data
+from utils.feature_engineering import *
+from utils.model_trainer import *
+from utils.one_year_data import *
 
 app = FastAPI()
 
@@ -42,38 +45,112 @@ async def get_data(symbol: str, from_date: date, to_date: date):
 @app.post("/predict")
 def predict_endpoint(data: FeatureInput = Body(...)):
     print("📦 Input received:", data)
+    try:
+        result, confidence = predict_with_model(data.model_type, data.symbol, data.features, return_proba=True)
+        return {
+            "prediction": result,
+            "confidence": round(confidence, 4)
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 #Makes prediction using (Web Socket) a specified model and feature set.
 @app.websocket("/ws/predict")
 async def websocket_predict(websocket: WebSocket):
-    pass
+    await websocket.accept()
+    print("✅ WebSocket connected for predictions")
+
+    while True:
+        try:
+            message = await websocket.receive_text()
+            data = json.loads(message)
+
+            model_type = data["model_type"]
+            symbol = data["symbol"]
+            candle = data["candle"]
+
+            features = prepare_single_feature_dict(candle)  # You can use your own logic here
+
+            result, confidence = predict_with_model(model_type, symbol, features, return_proba=True)
+
+            response = {
+                "prediction": result,
+                "confidence": round(confidence, 4),
+                "timestamp": candle.get("timestamp")
+            }
+
+            await websocket.send_text(json.dumps(response))
+
+        except Exception as e:
+            await websocket.send_text(json.dumps({"error": str(e)}))
 
 #Predicts using all five model types and writes results to a local JSON + opens HTML.
 @app.post("/predict_all_models")
 def predict_all_models_endpoint(data: FeatureInput = Body(...)):
     models = ["logistic", "random_forest", "xgboost", "lightgbm", "catboost"]
     results = {}
+    for model_type in models:
+        try:
+            prediction, confidence = predict_with_model(model_type, data.symbol, data.features, return_proba=True)
+            results[model_type] = {
+                "prediction": prediction,
+                "confidence": round(confidence, 4) if confidence is not None else None
+            }
+        except Exception as e:
+            results[model_type] = {"error": str(e)}
+        # Save results to file
+    with open("prediction_output.json", "w") as f:
+        json.dump(results, f, indent=4)
 
+    # Open viewer
+    webbrowser.open("file://" + os.path.abspath("prediction_view.html"))
+    return results
 
 #Converts raw candle data to engineered features and saves as training dataset.
 @app.get("/create_train_data")
 def create_train_data(symbol: str, from_date: date, to_date: date):
-    pass
+    input_path = f"data/{symbol.replace('|', '_')}_{from_date}_{to_date}.csv"
+    output_path = f"training_data/{symbol.replace('|', '_')}_{from_date}_{to_date}_train.csv"
+
+    try:
+        df = generate_features(input_path)
+        df.to_csv(output_path, index=False)
+        return {
+            "message": f"Training data saved to {output_path}",
+            "preview": df.head(5).to_dict(orient="records")
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 #Trains a single model (model_type) for given symbol + date range.
 @app.get("/train_model")
 def train_model_endpoint(symbol: str, from_date: date, to_date: date, model_type: str):
-    pass
+    try:
+        result = train_model(symbol, str(from_date), str(to_date), model_type)
+        return {"message": f"{model_type} model trained", "metrics": result}
+    except Exception as e:
+        return {"error": str(e)}
 
 #Trains all supported models for a given symbol and date range.
 @app.get("/train_all_models")
 def train_all_models_endpoint(symbol: str, from_date: date, to_date: date):
-    pass
+    try:
+        result = train_all_models(symbol, str(from_date), str(to_date))
+        return {
+            "message": "All models trained successfully.",
+            "metrics": result
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 #Backtests all trained models on historical data.
 @app.get("/backtest_models")
 def backtest_models_endpoint(symbol: str, from_date: date, to_date: date):
-    pass
+    try:
+        result = backtest_models(symbol, str(from_date), str(to_date))
+        return {"message": "Backtest complete", "results": result}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 
